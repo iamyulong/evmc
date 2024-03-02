@@ -3,7 +3,6 @@
  * Licensed under the Apache License, Version 2.0.
  */
 
-#[macro_use]
 extern crate enum_primitive;
 pub mod host;
 pub mod types;
@@ -87,6 +86,8 @@ impl EvmcVm {
                 code_address: ffi::evmc_address {
                     bytes: *code_address,
                 },
+                code: code.as_ptr(),
+                code_size: code.len(),
             }
         }));
         unsafe {

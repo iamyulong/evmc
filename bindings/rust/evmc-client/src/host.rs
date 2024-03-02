@@ -26,7 +26,7 @@ pub trait HostContext {
         buffer_data: &*mut u8,
         buffer_size: &usize,
     ) -> usize;
-    fn selfdestruct(&mut self, addr: &Address, beneficiary: &Address);
+    fn selfdestruct(&mut self, addr: &Address, beneficiary: &Address) -> bool;
     fn get_tx_context(
         &mut self,
     ) -> (
@@ -39,6 +39,9 @@ pub trait HostContext {
         Bytes32,
         Bytes32,
         Bytes32,
+        Bytes32,
+        &[Bytes32],
+        usize,
     );
     fn get_block_hash(&mut self, number: i64) -> Bytes32;
     fn emit_log(&mut self, addr: &Address, topics: &Vec<Bytes32>, data: &Bytes);
@@ -53,7 +56,7 @@ pub trait HostContext {
         depth: i32,
         is_static: bool,
         salt: &Bytes32,
-    ) -> (Vec<u8>, i64, Address, StatusCode);
+    ) -> (Vec<u8>, i64, i64, Address, StatusCode);
 }
 
 pub(crate) fn get_evmc_host_interface() -> ffi::evmc_host_interface {
@@ -70,8 +73,10 @@ pub(crate) fn get_evmc_host_interface() -> ffi::evmc_host_interface {
         get_tx_context: Some(get_tx_context),
         get_block_hash: Some(get_block_hash),
         emit_log: Some(emit_log),
-        access_account: None, // TODO
-        access_storage: None, // TODO
+        access_account: None,        // TODO
+        access_storage: None,        // TODO
+        get_transient_storage: None, // TODO
+        set_transient_storage: None, // TODO
     }
 }
 
@@ -159,7 +164,7 @@ unsafe extern "C" fn selfdestruct(
     context: *mut ffi::evmc_host_context,
     address: *const ffi::evmc_address,
     beneficiary: *const ffi::evmc_address,
-) {
+) -> bool {
     (*(context as *mut ExtendedContext))
         .hctx
         .selfdestruct(&(*address).bytes, &(*beneficiary).bytes)
@@ -175,7 +180,10 @@ unsafe extern "C" fn get_tx_context(context: *mut ffi::evmc_host_context) -> ffi
         gas_limit,
         prev_randao,
         chain_id,
-        base_fee,
+        block_base_fee,
+        blob_base_fee,
+        blob_hashes,
+        blob_hashes_count,
     ) = (*(context as *mut ExtendedContext)).hctx.get_tx_context();
     return ffi::evmc_tx_context {
         tx_gas_price: evmc_sys::evmc_bytes32 { bytes: gas_price },
@@ -186,7 +194,14 @@ unsafe extern "C" fn get_tx_context(context: *mut ffi::evmc_host_context) -> ffi
         block_gas_limit: gas_limit,
         block_prev_randao: evmc_sys::evmc_bytes32 { bytes: prev_randao },
         chain_id: evmc_sys::evmc_bytes32 { bytes: chain_id },
-        block_base_fee: evmc_sys::evmc_bytes32 { bytes: base_fee },
+        block_base_fee: evmc_sys::evmc_bytes32 {
+            bytes: block_base_fee,
+        },
+        blob_base_fee: evmc_sys::evmc_bytes32 {
+            bytes: blob_base_fee,
+        },
+        blob_hashes: blob_hashes.as_ptr() as *const evmc_sys::evmc_bytes32,
+        blob_hashes_count,
     };
 }
 
@@ -221,8 +236,9 @@ unsafe extern "C" fn emit_log(
 }
 
 unsafe extern "C" fn release(result: *const ffi::evmc_result) {
-    drop(std::slice::from_raw_parts(
-        (*result).output_data,
+    drop(Vec::from_raw_parts(
+        (*result).output_data as *mut u8,
+        (*result).output_size,
         (*result).output_size,
     ));
 }
@@ -232,7 +248,7 @@ pub unsafe extern "C" fn call(
     msg: *const ffi::evmc_message,
 ) -> ffi::evmc_result {
     let msg = *msg;
-    let (output, gas_left, create_address, status_code) =
+    let (mut output, gas_left, gas_refund, create_address, status_code) =
         (*(context as *mut ExtendedContext)).hctx.call(
             msg.kind,
             &msg.recipient.bytes,
@@ -244,12 +260,14 @@ pub unsafe extern "C" fn call(
             msg.flags != 0,
             &msg.create2_salt.bytes,
         );
+    output.shrink_to_fit();
     let ptr = output.as_ptr();
     let len = output.len();
     mem::forget(output);
     return ffi::evmc_result {
-        status_code: status_code,
-        gas_left: gas_left,
+        status_code,
+        gas_left,
+        gas_refund,
         output_data: ptr,
         output_size: len,
         release: Some(release),
