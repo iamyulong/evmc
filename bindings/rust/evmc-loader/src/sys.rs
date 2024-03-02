@@ -9,7 +9,7 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 // Defining evmc_vm here, because bindgen cannot create a useful declaration yet.
-
+#[allow(non_camel_case_types)]
 pub type evmc_vm = ::std::os::raw::c_void;
 
 #[cfg(test)]

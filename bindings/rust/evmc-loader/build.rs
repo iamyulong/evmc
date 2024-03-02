@@ -24,7 +24,7 @@ fn main() {
         // do not generate an empty enum for EVMC_ABI_VERSION
         .constified_enum("")
         // generate Rust enums for each evmc enum
-        .rustified_enum("*")
+        .rustified_enum(".*")
         .allowlist_type("evmc_.*")
         .allowlist_function("evmc_.*")
         .blocklist_type("evmc_vm")

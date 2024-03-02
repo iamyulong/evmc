@@ -12,5 +12,5 @@ description = "Bindings to EVMC (Loader bindings)"
 edition = "2018"
 
 [build-dependencies]
-bindgen = "0.59"
+bindgen = "0.69.4"
 cmake = "0.1"
