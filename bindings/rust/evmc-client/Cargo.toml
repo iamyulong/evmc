@@ -4,7 +4,7 @@
 
 [package]
 name = "evmc-client"
-version = "7.4.0"
+version = "12.0.0-alpha.0"
 authors = ["Zigang Lin <vincent@secondstate.io>"]
 license = "Apache-2.0"
 repository = "https://github.com/ethereum/evmc"
